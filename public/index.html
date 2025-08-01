@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TicTacToe mit Phaser</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Arial, sans-serif;
+        }
+        #game-container {
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    
+    <script>
+        class TicTacToe extends Phaser.Scene {
+            constructor() {
+                super({ key: 'TicTacToe' });
+                this.board = Array(9).fill(null);
+                this.currentPlayer = 'X';
+                this.gameOver = false;
+                this.cells = [];
+                this.winningCombos = [
+                    [0, 1, 2], [3, 4, 5], [6, 7, 8], // Horizontal
+                    [0, 3, 6], [1, 4, 7], [2, 5, 8], // Vertikal
+                    [0, 4, 8], [2, 4, 6] // Diagonal
+                ];
+            }
+
+            create() {
+                // Hintergrund
+                this.add.rectangle(400, 300, 800, 600, 0x2c3e50);
+                
+                // Titel
+                this.add.text(400, 50, 'TicTacToe', {
+                    fontSize: '48px',
+                    color: '#ecf0f1',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+                
+                // Status Text
+                this.statusText = this.add.text(400, 120, `Spieler ${this.currentPlayer} ist dran`, {
+                    fontSize: '24px',
+                    color: '#ecf0f1'
+                }).setOrigin(0.5);
+                
+                // Spielfeld erstellen
+                const startX = 250;
+                const startY = 200;
+                const cellSize = 100;
+                const spacing = 10;
+                
+                // Grid-Linien
+                for (let i = 1; i < 3; i++) {
+                    // Vertikale Linien
+                    this.add.rectangle(
+                        startX + i * (cellSize + spacing) - spacing/2,
+                        startY + 150,
+                        spacing,
+                        320,
+                        0x34495e
+                    );
+                    // Horizontale Linien
+                    this.add.rectangle(
+                        startX + 150,
+                        startY + i * (cellSize + spacing) - spacing/2,
+                        320,
+                        spacing,
+                        0x34495e
+                    );
+                }
+                
+                // Zellen erstellen
+                for (let row = 0; row < 3; row++) {
+                    for (let col = 0; col < 3; col++) {
+                        const index = row * 3 + col;
+                        const x = startX + col * (cellSize + spacing);
+                        const y = startY + row * (cellSize + spacing);
+                        
+                        const cell = this.add.rectangle(x, y, cellSize, cellSize, 0x3498db)
+                            .setInteractive()
+                            .on('pointerdown', () => this.handleCellClick(index))
+                            .on('pointerover', () => {
+                                if (!this.gameOver && this.board[index] === null) {
+                                    cell.setFillStyle(0x2980b9);
+                                }
+                            })
+                            .on('pointerout', () => {
+                                if (!this.gameOver && this.board[index] === null) {
+                                    cell.setFillStyle(0x3498db);
+                                }
+                            });
+                        
+                        this.cells[index] = {
+                            rect: cell,
+                            x: x,
+                            y: y,
+                            text: null
+                        };
+                    }
+                }
+                
+                // Reset Button
+                this.resetButton = this.add.rectangle(400, 530, 200, 50, 0xe74c3c)
+                    .setInteractive()
+                    .on('pointerdown', () => this.resetGame())
+                    .on('pointerover', () => this.resetButton.setFillStyle(0xc0392b))
+                    .on('pointerout', () => this.resetButton.setFillStyle(0xe74c3c));
+                
+                this.add.text(400, 530, 'Neues Spiel', {
+                    fontSize: '20px',
+                    color: '#ecf0f1'
+                }).setOrigin(0.5);
+            }
+            
+            handleCellClick(index) {
+                if (this.gameOver || this.board[index] !== null) {
+                    return;
+                }
+                
+                // Zug machen
+                this.board[index] = this.currentPlayer;
+                const cell = this.cells[index];
+                
+                // X oder O zeichnen
+                cell.text = this.add.text(cell.x, cell.y, this.currentPlayer, {
+                    fontSize: '64px',
+                    color: this.currentPlayer === 'X' ? '#e74c3c' : '#2ecc71',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+                
+                // Animation
+                this.tweens.add({
+                    targets: cell.text,
+                    scale: { from: 0, to: 1 },
+                    duration: 300,
+                    ease: 'Back.easeOut'
+                });
+                
+                // Gewinner prüfen
+                const winner = this.checkWinner();
+                if (winner) {
+                    this.gameOver = true;
+                    this.statusText.setText(`Spieler ${winner} hat gewonnen!`);
+                    this.highlightWinningCells();
+                } else if (this.board.every(cell => cell !== null)) {
+                    this.gameOver = true;
+                    this.statusText.setText('Unentschieden!');
+                } else {
+                    // Spieler wechseln
+                    this.currentPlayer = this.currentPlayer === 'X' ? 'O' : 'X';
+                    this.statusText.setText(`Spieler ${this.currentPlayer} ist dran`);
+                }
+            }
+            
+            checkWinner() {
+                for (const combo of this.winningCombos) {
+                    const [a, b, c] = combo;
+                    if (this.board[a] && 
+                        this.board[a] === this.board[b] && 
+                        this.board[a] === this.board[c]) {
+                        this.winningCombo = combo;
+                        return this.board[a];
+                    }
+                }
+                return null;
+            }
+            
+            highlightWinningCells() {
+                if (!this.winningCombo) return;
+                
+                this.winningCombo.forEach(index => {
+                    const cell = this.cells[index];
+                    this.tweens.add({
+                        targets: cell.rect,
+                        alpha: { from: 1, to: 0.3 },
+                        duration: 400,
+                        yoyo: true,
+                        repeat: -1
+                    });
+                });
+            }
+            
+            resetGame() {
+                // Board zurücksetzen
+                this.board = Array(9).fill(null);
+                this.currentPlayer = 'X';
+                this.gameOver = false;
+                this.winningCombo = null;
+                
+                // UI zurücksetzen
+                this.statusText.setText(`Spieler ${this.currentPlayer} ist dran`);
+                
+                // Zellen zurücksetzen
+                this.cells.forEach((cell, index) => {
+                    if (cell.text) {
+                        cell.text.destroy();
+                        cell.text = null;
+                    }
+                    cell.rect.setFillStyle(0x3498db);
+                    cell.rect.setAlpha(1);
+                    this.tweens.killTweensOf(cell.rect);
+                });
+            }
+        }
+
+        // Phaser Konfiguration
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            parent: 'game-container',
+            scene: TicTacToe,
+            backgroundColor: '#2c3e50'
+        };
+
+        // Spiel starten
+        const game = new Phaser.Game(config);
+    </script>
+</body>
+</html>
